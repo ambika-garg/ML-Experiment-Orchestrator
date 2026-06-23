@@ -1,0 +1,47 @@
+# Environment variables
+.env
+.env.local
+
+# Virtual environment
+venv/
+.venv/
+
+# Database files
+*.db
+ml_orchestrator.db
+mlflow.db
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# MLflow artifacts (if generated locally)
+mlruns/
+artifacts/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Pytest
+.pytest_cache/
+
+# Coverage
+.coverage
+htmlcov/

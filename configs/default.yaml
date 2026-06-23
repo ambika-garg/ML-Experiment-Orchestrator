@@ -1,0 +1,63 @@
+# Default experiment configuration
+experiment:
+  max_iterations: 3
+  convergence_threshold: 0.01
+  test_size: 0.2
+  cv_folds: 5
+  random_state: 42
+
+hpo:
+  n_trials: 50
+  sampler: tpe
+  pruner: median
+
+models:
+  classification:
+    default:
+      - logistic_regression
+      - random_forest
+      - xgboost
+    extended:
+      - logistic_regression
+      - random_forest
+      - gradient_boosting
+      - xgboost
+      - svm
+      - knn
+
+  regression:
+    default:
+      - ridge
+      - random_forest
+      - xgboost
+    extended:
+      - ridge
+      - random_forest
+      - gradient_boosting
+      - xgboost
+      - svm
+      - knn
+
+metrics:
+  classification:
+    default:
+      - f1
+      - roc_auc
+      - accuracy
+    all:
+      - f1
+      - roc_auc
+      - accuracy
+      - precision
+      - recall
+
+  regression:
+    default:
+      - mse
+      - r2
+      - mae
+    all:
+      - mse
+      - rmse
+      - r2
+      - mae
