@@ -19,6 +19,7 @@ from ml_experiment_orchestrator.agents.data_analysis import DataAnalysisAgent
 from ml_experiment_orchestrator.agents.evaluation import EvaluationAgent
 from ml_experiment_orchestrator.agents.experiment_runner import ExperimentRunnerAgent
 from ml_experiment_orchestrator.agents.feature_engineering import FeatureEngineeringAgent
+from ml_experiment_orchestrator.agents.hyperparameter_optimizer import HyperparameterOptimizationAgent
 from ml_experiment_orchestrator.agents.planner import PlannerAgent
 from ml_experiment_orchestrator.agents.replanner import ReplannerAgent
 from ml_experiment_orchestrator.agents.report import ReportAgent
@@ -37,28 +38,39 @@ _evaluation = EvaluationAgent()
 _critic = CriticAgent()
 _replanner = ReplannerAgent()
 _report = ReportAgent()
+_hpo = HyperparameterOptimizationAgent()
 
 
 # ── Node Functions ────────────────────────────────────────────────────────
 # Each node receives the full state and returns a *partial* state update.
 
 
+def _run_agent_with_traces(agent: Any, state: ExperimentState) -> dict[str, Any]:
+    """Reset traces on the agent, run it, and append captured traces to the output."""
+    if hasattr(agent, "_traces"):
+        agent._traces = []
+    res = agent.run(state)
+    if hasattr(agent, "_traces") and agent._traces:
+        res["llm_traces"] = agent._traces
+    return res
+
+
 def planner_node(state: ExperimentState) -> dict[str, Any]:
     """Plan the experiment based on the user goal."""
     logger.info("═══ PLANNER NODE ═══")
-    return _planner.run(state)
+    return _run_agent_with_traces(_planner, state)
 
 
 def data_analysis_node(state: ExperimentState) -> dict[str, Any]:
     """Profile and analyse the dataset."""
     logger.info("═══ DATA ANALYSIS NODE ═══")
-    return _data_analysis.run(state)
+    return _run_agent_with_traces(_data_analysis, state)
 
 
 def feature_engineering_node(state: ExperimentState) -> dict[str, Any]:
     """Design the preprocessing pipeline."""
     logger.info("═══ FEATURE ENGINEERING NODE ═══")
-    return _feature_engineering.run(state)
+    return _run_agent_with_traces(_feature_engineering, state)
 
 
 def runner_node(state: ExperimentState) -> dict[str, Any]:
@@ -70,25 +82,31 @@ def runner_node(state: ExperimentState) -> dict[str, Any]:
 def evaluation_node(state: ExperimentState) -> dict[str, Any]:
     """Evaluate and rank all models."""
     logger.info("═══ EVALUATION NODE ═══")
-    return _evaluation.run(state)
+    return _run_agent_with_traces(_evaluation, state)
 
 
 def critic_node(state: ExperimentState) -> dict[str, Any]:
     """Critique results and decide whether to iterate."""
     logger.info("═══ CRITIC NODE ═══")
-    return _critic.run(state)
+    return _run_agent_with_traces(_critic, state)
 
 
 def replanner_node(state: ExperimentState) -> dict[str, Any]:
     """Update the experiment plan based on critic feedback."""
     logger.info("═══ REPLANNER NODE ═══")
-    return _replanner.run(state)
+    return _run_agent_with_traces(_replanner, state)
 
 
 def report_node(state: ExperimentState) -> dict[str, Any]:
     """Generate the final report."""
     logger.info("═══ REPORT NODE ═══")
-    return _report.run(state)
+    return _run_agent_with_traces(_report, state)
+
+
+def hpo_node(state: ExperimentState) -> dict[str, Any]:
+    """Optimize hyperparameters for the best model."""
+    logger.info("═══ HYPERPARAMETER OPTIMIZATION NODE ═══")
+    return _run_agent_with_traces(_hpo, state)
 
 
 # ── Build the Graph ───────────────────────────────────────────────────────
@@ -111,6 +129,7 @@ def build_workflow() -> StateGraph:
     graph.add_node("critic", critic_node)
     graph.add_node("replanner", replanner_node)
     graph.add_node("report", report_node)
+    graph.add_node("hpo", hpo_node)
 
     # Define edges (linear flow)
     graph.set_entry_point("planner")
@@ -126,12 +145,16 @@ def build_workflow() -> StateGraph:
         should_continue_or_report,
         {
             "replanner": "replanner",
+            "hpo": "hpo",
             "report": "report",
         },
     )
 
     # Replanner loops back to runner
     graph.add_edge("replanner", "runner")
+
+    # HPO loops back to evaluation
+    graph.add_edge("hpo", "evaluation")
 
     # Report ends the workflow
     graph.add_edge("report", END)

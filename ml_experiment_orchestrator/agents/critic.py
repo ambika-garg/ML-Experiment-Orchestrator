@@ -29,7 +29,7 @@ Consider:
 3. Have we tried enough model types and preprocessing approaches?
 4. Are there signs of overfitting or underfitting?
 5. Could additional feature engineering help?
-6. Would hyperparameter tuning (if not yet done) improve results?
+6. If the custom feature engineering code failed with an exception, how must it be fixed?
 
 Available improvement actions:
 - "apply_smote": Apply SMOTE for class imbalance
@@ -47,7 +47,7 @@ Respond ONLY with a valid JSON object:
     {"action": "apply_smote", "reason": "Class imbalance detected"},
     {"action": "try_model:gradient_boosting", "reason": "Ensemble methods might perform better"}
   ],
-  "reasoning": "Detailed explanation of your critique",
+  "reasoning": "Detailed explanation of your critique. If the custom code failed, explain exactly what went wrong and how the Replanner should rewrite it.",
   "confidence": 0.7
 }
 
@@ -147,9 +147,13 @@ Do NOT include any text outside the JSON object."""
             f"Missing data: {summary.get('total_missing_pct', 0)}%\n\n"
             f"Current preprocessing:\n"
             f"  Imbalance handling: {feature_plan.get('imbalance_handling', {})}\n"
-            f"  Feature selection: {feature_plan.get('feature_selection', {})}\n\n"
+            f"  Feature selection: {feature_plan.get('feature_selection', {})}\n"
+            f"  Custom code: {feature_plan.get('custom_code', 'None')}\n\n"
             f"Previous analysis concerns: {evaluation.get('concerns', [])}\n"
         )
+
+        if feature_plan.get("error"):
+            prompt += f"\n[CRITICAL ERROR] The custom feature engineering code raised an exception:\n{feature_plan['error']}\nYou MUST set 'should_continue' to true and explain how to fix this error.\n"
 
         feedback = self.invoke_llm_json(prompt)
         feedback.setdefault("should_continue", False)

@@ -129,12 +129,13 @@ class ExperimentRunnerAgent:
                     }
                 )
 
-        logger.info(
-            "[ExperimentRunner] Completed %d/%d models",
-            sum(1 for r in results if "error" not in r),
-            len(models_to_train),
-        )
-        return {"experiment_results": results}
+        return {
+            "experiment_results": results,
+            "_X_train": X_train,
+            "_y_train": y_train,
+            "_X_test": X_test,
+            "_y_test": y_test,
+        }
 
     # ── Private Methods ───────────────────────────────────────────────────
 
@@ -163,6 +164,16 @@ class ExperimentRunnerAgent:
 
         return X, y
 
+    def _execute_custom_code(self, df: pd.DataFrame, code_str: str) -> pd.DataFrame:
+        """Execute custom feature engineering code block in a local namespace."""
+        local_vars = {}
+        global_vars = {"pd": pd, "np": np}
+        exec(code_str, global_vars, local_vars)
+        transform_fn = local_vars.get("transform_data")
+        if not transform_fn:
+            raise ValueError("Function 'transform_data' not found in generated code.")
+        return transform_fn(df)
+
     def _apply_preprocessing(
         self,
         X: pd.DataFrame,
@@ -172,6 +183,23 @@ class ExperimentRunnerAgent:
     ) -> tuple[np.ndarray, np.ndarray]:
         """Apply the preprocessing pipeline from the feature plan."""
         X = X.copy()
+
+        # Clear any previous run errors
+        if "error" in feature_plan:
+            del feature_plan["error"]
+
+        # ── Custom Feature Engineering Code ──────────────────────────────
+        custom_code = feature_plan.get("custom_code")
+        if custom_code:
+            try:
+                logger.info("[ExperimentRunner] Executing custom feature engineering code...")
+                X = self._execute_custom_code(X, custom_code)
+                logger.info("[ExperimentRunner] Custom code executed successfully. New shape: %s", X.shape)
+            except Exception as exc:
+                logger.error("[ExperimentRunner] Custom feature engineering failed: %s", exc)
+                # Persist traceback so Critic/Replanner can debug it
+                import traceback
+                feature_plan["error"] = traceback.format_exc()
 
         numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
         categorical_cols = X.select_dtypes(

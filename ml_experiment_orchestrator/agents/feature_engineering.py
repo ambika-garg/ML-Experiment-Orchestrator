@@ -19,7 +19,7 @@ class FeatureEngineeringAgent(BaseAgent):
 
     @property
     def system_prompt(self) -> str:
-        return """You are an expert ML feature engineer. Given a dataset summary and experiment plan, you must design an optimal preprocessing pipeline.
+        return """You are an expert ML feature engineer. Given a dataset summary and experiment plan, you must design an optimal preprocessing pipeline AND generate custom feature engineering Python code.
 
 Consider:
 1. Scaling: StandardScaler, MinMaxScaler, RobustScaler (for numeric features)
@@ -28,12 +28,14 @@ Consider:
 4. Feature selection: SelectKBest, PCA, variance_threshold
 5. Imbalance handling: smote, random_oversampling, class_weight (for imbalanced classification)
 
-Rules:
-- Always apply some form of scaling for numeric features
-- Apply encoding for any categorical features
-- Only apply imbalance handling if class ratio exceeds 2:1
-- Only apply PCA if there are more than 20 features
-- Only apply feature selection if there are many features relative to samples
+Your custom feature engineering code must define a function `transform_data(df: pd.DataFrame) -> pd.DataFrame` that creates new informative features based on the columns description.
+
+Rules for writing `transform_data`:
+- pandas and numpy are already imported in context as `pd` and `np`.
+- Never delete the target column (it is handled separately and will not be present in `df`).
+- Handle divisions by zero or NaN values safely (e.g. use `.fillna(0)` or add small epsilon values to denominators like `1e-6`).
+- Return a DataFrame with the new features appended. Keep original features unless they are completely redundant.
+- Ensure the code is syntactically valid.
 
 Respond ONLY with a valid JSON object in this format:
 {
@@ -52,6 +54,7 @@ Respond ONLY with a valid JSON object in this format:
     "apply": false,
     "method": null
   },
+  "custom_code": "def transform_data(df: pd.DataFrame) -> pd.DataFrame:\n    # Create feature ratios or segmentations safely\n    # df['ratio_col'] = df['col1'] / (df['col2'] + 1e-6)\n    return df",
   "reasoning": "Brief explanation of choices"
 }
 

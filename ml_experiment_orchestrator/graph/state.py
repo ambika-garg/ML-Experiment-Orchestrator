@@ -30,6 +30,7 @@ class ExperimentState(TypedDict, total=False):
     dataset_summary: dict
     feature_plan: dict
     experiment_results: Annotated[list, operator.add]  # Append across iterations
+    llm_traces: Annotated[list, operator.add]  # Append across iterations/nodes
     evaluation: dict
     critic_feedback: dict
     best_model: dict

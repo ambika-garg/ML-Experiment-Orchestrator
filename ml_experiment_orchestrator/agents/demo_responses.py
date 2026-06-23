@@ -28,6 +28,15 @@ def demo_json_response(agent_name: str, prompt: str) -> dict[str, Any]:
             "feature_importance_hints": [],
         }
     if agent_name == "FeatureEngineeringAgent":
+        custom_code = (
+            "def transform_data(df: pd.DataFrame) -> pd.DataFrame:\n"
+            "    # Generate custom interaction features dynamically\n"
+            "    import numpy as np\n"
+            "    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()\n"
+            "    if len(numeric_cols) >= 2:\n"
+            "        df['custom_interaction'] = df[numeric_cols[0]] * df[numeric_cols[1]]\n"
+            "    return df"
+        )
         return {
             "preprocessing_steps": [
                 {"step": "imputation", "method": "median", "columns": "numeric"},
@@ -41,9 +50,10 @@ def demo_json_response(agent_name: str, prompt: str) -> dict[str, Any]:
                 "n_features": 20,
             },
             "imbalance_handling": {"apply": False, "method": None},
+            "custom_code": custom_code,
             "reasoning": (
-                "Demo mode applies a conservative preprocessing pipeline that works "
-                "for the built-in datasets and most tabular CSVs."
+                "Demo mode applies a conservative preprocessing pipeline and generates "
+                "custom numeric interaction features."
             ),
         }
     if agent_name == "EvaluationAgent":
@@ -57,15 +67,29 @@ def demo_json_response(agent_name: str, prompt: str) -> dict[str, Any]:
             ],
         }
     if agent_name == "CriticAgent":
-        return {
-            "should_continue": False,
-            "improvements": [],
-            "reasoning": (
-                "Demo mode stops after the first evaluation to keep local runs fast "
-                "and deterministic without requiring an API key."
-            ),
-            "confidence": 1.0,
-        }
+        # Check iteration or if HPO has already run
+        match = re.search(r"Iteration:\s*(\d+)/", prompt)
+        iteration = int(match.group(1)) if match else 0
+        has_hpo = "hpo" in prompt.lower()
+
+        if iteration == 0 and not has_hpo:
+            return {
+                "should_continue": True,
+                "improvements": [
+                    {"action": "tune_hyperparameters", "reason": "Hyperparameter optimization of the top model is recommended to improve accuracy."}
+                ],
+                "reasoning": "Initial baseline runs complete. Proposing hyperparameter tuning for the best model to improve performance.",
+                "confidence": 0.9,
+            }
+        else:
+            return {
+                "should_continue": False,
+                "improvements": [],
+                "reasoning": (
+                    "Tuning completed and final results evaluated. Stopping further iterations."
+                ),
+                "confidence": 1.0,
+            }
     if agent_name == "ReplannerAgent":
         return {
             "experiment_plan": _planner_response(prompt),

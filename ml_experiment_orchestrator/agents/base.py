@@ -39,6 +39,7 @@ class BaseAgent(ABC):
         self._temperature = temperature or settings.llm_temperature
         self._llm: ChatGoogleGenerativeAI | None = None
         self._name = self.__class__.__name__
+        self._traces: list[dict[str, Any]] = []
 
     @property
     def llm(self) -> ChatGoogleGenerativeAI:
@@ -71,18 +72,86 @@ class BaseAgent(ABC):
 
     def invoke_llm(self, user_prompt: str) -> str:
         """Send a system + user message pair to the LLM and return the text."""
+        import time
+
         if settings.demo_mode:
             logger.info("[%s] Demo mode enabled; using deterministic response", self._name)
-            return demo_text_response(self._name, user_prompt)
+            content = demo_text_response(self._name, user_prompt)
+            # Create a mock trace for UI testing in demo mode
+            prompt_tok = len(user_prompt.split()) * 4
+            comp_tok = len(content.split()) * 4
+            tot_tok = prompt_tok + comp_tok
+            input_cost_rate = 0.075 / 1_000_000
+            output_cost_rate = 0.30 / 1_000_000
+            cost = (prompt_tok * input_cost_rate) + (comp_tok * output_cost_rate)
+            
+            self._traces.append({
+                "agent_name": self._name,
+                "prompt_tokens": prompt_tok,
+                "completion_tokens": comp_tok,
+                "total_tokens": tot_tok,
+                "cost": round(cost, 8),
+                "latency": round(0.4 + (prompt_tok / 1000.0), 3),
+            })
+            return content
 
         messages = [
             SystemMessage(content=self.system_prompt),
             HumanMessage(content=user_prompt),
         ]
         logger.info("[%s] Invoking LLM …", self._name)
+        
+        start_time = time.perf_counter()
         response = self.llm.invoke(messages)
+        latency = time.perf_counter() - start_time
+        
         content = response.content
         logger.debug("[%s] Raw LLM response: %s", self._name, content[:500])
+
+        # Track usage statistics
+        prompt_tokens = 0
+        completion_tokens = 0
+        total_tokens = 0
+
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            prompt_tokens = response.usage_metadata.get("input_tokens", 0)
+            completion_tokens = response.usage_metadata.get("output_tokens", 0)
+            total_tokens = response.usage_metadata.get("total_tokens", 0)
+        elif hasattr(response, "response_metadata") and response.response_metadata:
+            meta = response.response_metadata
+            token_usage = meta.get("token_usage") or meta.get("usage")
+            if isinstance(token_usage, dict):
+                prompt_tokens = token_usage.get("prompt_tokens") or token_usage.get("input_tokens") or 0
+                completion_tokens = token_usage.get("completion_tokens") or token_usage.get("output_tokens") or 0
+                total_tokens = token_usage.get("total_tokens") or (prompt_tokens + completion_tokens)
+
+        # Fallback to estimate if 0
+        if total_tokens == 0:
+            prompt_tokens = len(user_prompt.split()) * 4
+            completion_tokens = len(content.split()) * 4
+            total_tokens = prompt_tokens + completion_tokens
+
+        # Cost calculation
+        model_name = settings.llm_model
+        input_cost_rate = 0.075 / 1_000_000
+        output_cost_rate = 0.30 / 1_000_000
+
+        if "pro" in model_name:
+            input_cost_rate = 1.25 / 1_000_000
+            output_cost_rate = 5.00 / 1_000_000
+
+        cost = (prompt_tokens * input_cost_rate) + (completion_tokens * output_cost_rate)
+
+        # Append to active traces
+        self._traces.append({
+            "agent_name": self._name,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost": round(cost, 8),
+            "latency": round(latency, 3),
+        })
+
         return content
 
     def invoke_llm_json(
@@ -95,7 +164,24 @@ class BaseAgent(ABC):
         """
         if settings.demo_mode:
             logger.info("[%s] Demo mode enabled; using deterministic JSON", self._name)
-            return demo_json_response(self._name, user_prompt)
+            res = demo_json_response(self._name, user_prompt)
+            import json
+            res_str = json.dumps(res)
+            prompt_tok = len(user_prompt.split()) * 4
+            comp_tok = len(res_str.split()) * 4
+            tot_tok = prompt_tok + comp_tok
+            input_cost_rate = 0.075 / 1_000_000
+            output_cost_rate = 0.30 / 1_000_000
+            cost = (prompt_tok * input_cost_rate) + (comp_tok * output_cost_rate)
+            self._traces.append({
+                "agent_name": self._name,
+                "prompt_tokens": prompt_tok,
+                "completion_tokens": comp_tok,
+                "total_tokens": tot_tok,
+                "cost": round(cost, 8),
+                "latency": round(0.3 + (prompt_tok / 1200.0), 3),
+            })
+            return res
 
         for attempt in range(1 + retries):
             raw = self.invoke_llm(user_prompt)

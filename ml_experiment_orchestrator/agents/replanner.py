@@ -53,6 +53,7 @@ Respond ONLY with a valid JSON object:
     ],
     "feature_selection": {"apply": true, "method": "select_k_best", "n_features": 15},
     "imbalance_handling": {"apply": true, "method": "smote"},
+    "custom_code": "def transform_data(df: pd.DataFrame) -> pd.DataFrame:\n    # Update features based on critic suggestion or correct errors\n    return df",
     "reasoning": "Explanation of changes"
   }
 }

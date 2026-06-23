@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     JSON,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -73,6 +74,11 @@ class Experiment(Base):
         cascade="all, delete-orphan",
         order_by="ExperimentRun.created_at",
     )
+    llm_traces: Mapped[list["LLMTrace"]] = relationship(
+        back_populates="experiment",
+        cascade="all, delete-orphan",
+        order_by="LLMTrace.created_at",
+    )
 
     def __repr__(self) -> str:
         return f"<Experiment {self.id[:8]}… status={self.status}>"
@@ -107,3 +113,31 @@ class ExperimentRun(Base):
 
     def __repr__(self) -> str:
         return f"<ExperimentRun {self.id[:8]}… model={self.model_name}>"
+
+
+class LLMTrace(Base):
+    """Execution trace for LLM calls (tokens, cost, latency)."""
+
+    __tablename__ = "llm_traces"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=_new_uuid
+    )
+    experiment_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("experiments.id"), nullable=False
+    )
+    agent_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost: Mapped[float] = mapped_column(Float, default=0.0)
+    latency: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    # Relationships
+    experiment: Mapped["Experiment"] = relationship(back_populates="llm_traces")
+
+    def __repr__(self) -> str:
+        return f"<LLMTrace {self.id[:8]}… agent={self.agent_name}>"

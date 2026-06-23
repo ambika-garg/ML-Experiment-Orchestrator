@@ -18,7 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from ml_experiment_orchestrator.config import settings
 from ml_experiment_orchestrator.graph.workflow import workflow
-from ml_experiment_orchestrator.models.database import Experiment, ExperimentRun
+from ml_experiment_orchestrator.models.database import Experiment, ExperimentRun, LLMTrace
 from ml_experiment_orchestrator.services.data_loader import load_dataset
 
 logger = logging.getLogger(__name__)
@@ -111,11 +111,14 @@ class ExperimentService:
     # ── Query ─────────────────────────────────────────────────────────────
 
     async def get_experiment(self, experiment_id: str) -> Experiment | None:
-        """Get an experiment by ID with its runs eagerly loaded."""
+        """Get an experiment by ID with its runs and LLM traces eagerly loaded."""
         stmt = (
             select(Experiment)
             .where(Experiment.id == experiment_id)
-            .options(selectinload(Experiment.runs))
+            .options(
+                selectinload(Experiment.runs),
+                selectinload(Experiment.llm_traces),
+            )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
@@ -193,10 +196,24 @@ class ExperimentService:
             )
             self.session.add(run)
 
+        # Create LLMTrace records
+        for trace in state.get("llm_traces", []):
+            db_trace = LLMTrace(
+                experiment_id=experiment.id,
+                agent_name=trace.get("agent_name", "unknown"),
+                prompt_tokens=trace.get("prompt_tokens", 0),
+                completion_tokens=trace.get("completion_tokens", 0),
+                total_tokens=trace.get("total_tokens", 0),
+                cost=trace.get("cost", 0.0),
+                latency=trace.get("latency", 0.0),
+            )
+            self.session.add(db_trace)
+
         await self.session.flush()
         logger.info(
-            "Persisted %d runs for experiment %s",
+            "Persisted %d runs and %d LLM traces for experiment %s",
             len(state.get("experiment_results", [])),
+            len(state.get("llm_traces", [])),
             experiment.id,
         )
 

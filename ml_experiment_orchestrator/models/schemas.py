@@ -61,10 +61,26 @@ class ExperimentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class LLMTraceResponse(BaseModel):
+    """Single LLM API call trace information."""
+
+    id: str
+    agent_name: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    cost: float
+    latency: float
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class ExperimentDetailResponse(ExperimentResponse):
-    """Experiment with its runs attached."""
+    """Experiment with its runs and LLM traces attached."""
 
     runs: list[ExperimentRunResponse] = []
+    llm_traces: list[LLMTraceResponse] = []
 
 
 class ExperimentReportResponse(BaseModel):
